@@ -1,5 +1,5 @@
 ---
-title: "team"
+title: "Lab 4"
 author: "Alex Thompson"
 date: "10/21/2019"
 output: html_document
@@ -9,22 +9,122 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Loading the data
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r}
+library(readxl)
+defense <- read_excel('C:/Users/thomp/Documents/DS202/ds202_labs/ds202_labs/cyclonesFootball2018.xlsx', sheet='Defensive')
+str(defense)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+offense <- read_excel('C:/Users/thomp/Documents/DS202/ds202_labs/ds202_labs/cyclonesFootball2018.xlsx', sheet='Offensive')
+str(offense)
 
-```{r cars}
-summary(cars)
+biography <- read_excel('C:/Users/thomp/Documents/DS202/ds202_labs/ds202_labs/cyclonesFootball2018.xlsx', sheet='Biography')
+str(biography)
 ```
 
-## Including Plots
+## Cleaning the Data
 
-You can also embed plots, for example:
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+#Loading the dataframes in
+defClean = defense
+offClean = offense
+bioClean = biography
+
+#Converting name and opponent columns into factors for the three frames
+defClean$Name = factor(defClean$Name)
+defClean$Opponent_Opponent = factor(defClean$Opponent_Opponent)
+
+offClean$Name = factor(offClean$Name)
+offClean$Opponent_Opponent = factor(offClean$Opponent_Opponent)
+
+bioClean$Name = factor(bioClean$Name)
+
+#Changing columns into numeric in all three frames
+defClean = mutate_at(defClean, vars(Tackles_Solo,Tackles_ASST,Tackles_TFL,Tackles_Sack,Turnover_FF,Turnover_FR,Turnover_INT,Pass_QBH,Pass_PB), funs(as.numeric))
+
+offClean = mutate_at(offClean, vars(Receiving_REC,Receiving_YDS,Receiving_TD,Rushing_ATT,Rushing_YDS,Rushing_TD,'Passing_CMP-ATT',Passing_YDS,Passing_TD,Passing_INT), funs(as.numeric))
+
+offClean = mutate_at(offClean, vars(Receiving_REC,Receiving_YDS,Receiving_TD,Rushing_ATT,Rushing_YDS,Rushing_TD,'Passing_CMP-ATT',Passing_YDS,Passing_TD,Passing_INT), funs(as.numeric))
+
+bioClean = mutate_at(bioClean, vars(Weight), funs(as.numeric))
+
+#Loading in the stringr package for string manipulation
+library(stringr)
+
+#Pulling feet and inches from height, putting them in their own respective columns
+bioClean = bioClean %>%
+   dplyr::mutate(inch = as.numeric(str_extract(Height, "[^-]+$")))
+
+bioClean = bioClean %>%
+   dplyr::mutate(feet = as.numeric(str_extract(Height, "[^-]+")))
+
+#From feet and inch columns, recreate the Height column in terms of inches
+bioClean = mutate(bioClean, Height = feet * 12 + inch)
+
+#Dropping the feet and inch columns from the frame
+bioClean = subset(bioClean, select = -c(feet, inch))
+
+#Displaying the structure of the three data frames
+str(defClean)
+
+str(offClean)
+
+str(bioClean)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Tidying (A)
+
+```{r}
+library(tidyr)
+
+#Reformating defClean such that Statistic is a key and the rest of the numeric are values
+defClean = gather(defClean, key = Statistic, value = Value, 3:11)
+```
+
+```{r}
+library(ggplot2)
+
+#Drawing up a histogram of distribution of values, seperated by the Statistic type 
+
+ggplot(defClean, aes(Value)) + geom_histogram(binwidth = .7) + facet_wrap(~Statistic) + labs(y="Count", title="Count of Values seperated by Statistic type")
+```
+
+**Interpretation:** Based on this visualization it seems like in general it is unlikely to see values that are remarkebly high, the distribtuions for all statistics are centered around lower values with very few outliers into the higher range of values. 
+
+```{r message=FALSE, warning=FALSE}
+#Spreading defClean like the red sea, just kidding, but I am spreading defensive statistics by which opponent that ISU was playing against
+defClean = spread(defClean, key = Opponent_Opponent, value = Value)
+
+#Now I am filtering to only have entries for solo tackles statistics
+tackSol = filter(defClean, Statistic == "Tackles_Solo")
+
+#Rendering a point graph based off of the cleaned data
+ggplot(tackSol, aes(x=tackSol$`Kansas State`, y=tackSol$`West Virginia`)) + geom_point() + labs(x="Kansas State", y="West Virginia", title= "Solo Tackles against West Virginia vs. against Kansas State")
+```
+
+**Interpretation:** Based on this visualization it seems like palyers who were largely locked out by West Virginia were still able to score some solo tackles, or even many solo tackles against Kansas State. This leads me to the conclusion that ISU had better defense in net against Kansas State.
+
+## Tidying (B)
+
+```{r}
+#Seperating the state column into town and state
+bioClean = separate(bioClean, Hometown, c("town", "state"), sep = ", ")
+
+#Show entry frequencies for each state
+table(bioClean$state)
+```
+
+## Joining frames
+
+```{r message=FALSE, warning=FALSE}
+#Joining Offense and bioClean to show after each stat entry where the player is from
+offense = left_join(offClean, bioClean, by = "Name")
+
+#Calcualte correlation between weight and Recieving Yards
+cor(offense$Weight, offense$Receiving_YDS, use = "complete.obs")
+```
+
+**Interpretation:** With such a low correlation value it is unlikely that there is any relationship between a players weight and their Recieving yards. 
